@@ -1,0 +1,1 @@
+web: java -Dserver.port=$PORT -jar target/moxtra-bot.war

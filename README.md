@@ -67,7 +67,7 @@ git clone https://github.com/Moxtra/moxtra-bot-sdk-java.git
 
 ## Getting Started
 
-- Create a new bot application using your `verify_token` and `client_secret` obtained from your [MoxtraBot configuration](https://developer.moxtra.com/nextbots) and place those info in /resources/application.properties as below to finish the bot creation:
+- Create a new bot application using your `verify_token` and `client_secret` obtained from your [MoxtraBot configuration](https://developer.moxtra.com/nextbots) and place those info in /resources/application.properties as shown below to finish the bot creation:
 
 ```
 verify_token=YOUR_VERIFY_TOKEN
@@ -372,7 +372,7 @@ public class MoxtraBotApplication {
 ```
 - Handle OAuth2 flow:
 
-Setup OAuth2 configuration in /resources/application.properties as below:
+Setup OAuth2 configuration in /resources/application.properties as shown below:
 
 ```java
 oauth2_client_id=SERVICE_OAUTH2_CLIENT_ID
@@ -768,7 +768,7 @@ Comment object is used for setting up messages for sending via `Chat` and is gen
 
 ## Examples
 
-Check the `examples` directory to see the example of the following capabiliies:
+Check the `examples` directory to see the example of the following capabilities:
 
 - Send text message
 - Using regular expression to capture text message

@@ -3,6 +3,7 @@ package com.moxtra.bot;
 
 import java.util.List;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
@@ -18,6 +19,7 @@ import java.util.regex.Pattern;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -196,23 +198,25 @@ public abstract class MoxtraBot {
     	    }    		
     		
     	    // read from request
-    	    StringBuilder buffer = new StringBuilder();
-    	    BufferedReader reader = request.getReader();
-    	    String line;
-    	    while ((line = reader.readLine()) != null) {
-    	        buffer.append(line);
-    	    }
-    	    String body = buffer.toString();
-    		
-    	    if (StringUtils.isEmpty(body)) {
-    	    	throw new Exception("No request body!");
-    	    }
+    	    ServletInputStream stream = request.getInputStream();
     	    
+    	    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    	    int nRead;
+    	    byte[] data = new byte[1024];
+    	    while ((nRead = stream.read(data, 0, data.length)) != -1) {
+    	        buffer.write(data, 0, nRead);
+    	    }
+    	 
+    	    buffer.flush();
+    	    byte[] body = buffer.toByteArray();    	      	    
+    	    
+    	    logger.info("body: " + new String(body, "UTF-8"));
+    	      
     	    // validate signature
     	    try {
     	    	String expectedHash = calculateHMAC_SHA1(body, client_secret);
     	    	if (!signatureHash.equals(expectedHash)) {
-    	    		throw new Exception("Validation on the request signature failed!");
+    	    		throw new Exception("Validation on the request signature failed! signatureHash: " + signatureHash + " expectedHash: " + expectedHash);
     	    	}
     	    	
     	    } catch (Exception e) {
@@ -332,13 +336,13 @@ public abstract class MoxtraBot {
 		return formatter.toString();
 	}    
     
-	private static String calculateHMAC_SHA1(String data, String key)
+	private static String calculateHMAC_SHA1(byte[] data, String key)
 			throws SignatureException, NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException
 	{
 		SecretKeySpec signingKey = new SecretKeySpec(key.getBytes("UTF-8"), HMAC_SHA1_ALGORITHM);
 		Mac mac = Mac.getInstance(HMAC_SHA1_ALGORITHM);
 		mac.init(signingKey);
-		return "sha1=" + toHexString(mac.doFinal(data.getBytes("UTF-8")));
+		return "sha1=" + toHexString(mac.doFinal(data));
 	}	    
     
     private List<Invocable> filterMessageMethods(ChatMessage chatMessage) {

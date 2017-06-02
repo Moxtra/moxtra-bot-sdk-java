@@ -42,7 +42,7 @@ bot_challenge='RANDOM_STRING' sending to the configured verify_url. To complete 
     timestamp: 'TIMESTAMP',
     user: {
       id: 'USER_ID',
-      username: 'USERNAME'
+      name: 'USERNAME'
     },
     comment: {
       id: 'COMMENT_ID',

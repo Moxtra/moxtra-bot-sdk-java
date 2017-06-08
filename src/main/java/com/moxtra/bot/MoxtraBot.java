@@ -309,11 +309,10 @@ public abstract class MoxtraBot {
      * invoke handler for access_token after Account_Link
      * 
      * @param request
-     * @param response
      * @param access_token
      * @throws Exception
      */
-    public void handleAccessToken(HttpServletRequest request, HttpServletResponse response, String access_token) throws Exception {
+    public void handleAccessToken(HttpServletRequest request, String access_token) throws Exception {
     	
     	List<MethodWrapper> methodWrappers = eventToMethodsMap.get(EventType.ACCESS_TOKEN.name());
         if (methodWrappers != null) {

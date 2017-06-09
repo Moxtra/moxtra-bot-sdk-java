@@ -1,5 +1,6 @@
 package com.moxtra.examples;
 
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.regex.Matcher;
 
@@ -97,6 +98,7 @@ public class MyBot extends MoxtraBot {
 		
 		// save chat in pendingResponse for account_link
 		pendingResponse.put(chat.getBinder_id() + chat.getUser_id(), chat);
+		moxtraAccessToken.put(chat.getBinder_id(), chat.getAccess_token());
 		
 		Button account_link_button = new Button(Button.ACCOUNT_LINK, "Sign In");
 		Button postback_button = new Button("Not Sure?");
@@ -179,16 +181,26 @@ public class MyBot extends MoxtraBot {
 				if (chat == null) {
 					logger.info("Unable to get pending request!");	
 					
+					String bot_access_token = moxtraAccessToken.get(binder_id);
+
 					// create a new Chat
-					chat = new Chat();
-					chat.setAccess_token(moxtraAccessToken.get(binder_id));
+					if (bot_access_token != null) {
+						chat = new Chat();
+						chat.setAccess_token(bot_access_token);
+					}
 				}	
 				
-				String message = "@" + username + " has already obtained access_token from the 3rd party service!";
+				if (chat != null) {
+					String message = "@" + username + " has already obtained access_token from the 3rd party service!";
+					
+					chat.sendRequest(new Comment.Builder().text(message).build());
+				}
 				
-				chat.sendRequest(new Comment.Builder().text(message).build());	
-				
-				response.setStatus(HttpServletResponse.SC_OK);
+				// close window
+				response.setContentType("text/html");
+				PrintWriter out = response.getWriter();
+				out.print("<html><head></head><body onload=\"javascript:window.close();\"></body></html>");
+				out.flush();				
 				
 			} else {
 	

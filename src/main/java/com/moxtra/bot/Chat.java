@@ -16,17 +16,25 @@ import com.moxtra.bot.model.EventTodo;
 import com.moxtra.bot.model.EventType;
 import com.moxtra.bot.model.EventUser;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 
 import javax.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -79,11 +87,63 @@ public class Chat {
 
         	HttpHeaders headers = new HttpHeaders();
         	headers.set("Authorization", "Bearer " + this.access_token);
+
         	headers.setContentType(MediaType.APPLICATION_JSON);
 
         	HttpEntity<String> entity = new HttpEntity<String>(comment.toJSONString(), headers);
 
             restTemplate.postForEntity(URL_ENDPOINT, entity, String.class);
+
+        } catch (JsonProcessingException e) {
+            logger.error("Invalid message format!", e);
+            return false;
+        } catch (RestClientException e) {
+            logger.error("Error posting message!", e);
+            return false;
+        }
+
+        return true;
+	}
+
+
+	@PostConstruct
+	public boolean sendRequest(Comment comment, File file, File audio) {
+
+		if (file == null && audio == null) {
+			return sendRequest(comment);
+		}
+
+        try {
+
+        	HttpHeaders headers = new HttpHeaders();
+        	headers.set("Authorization", "Bearer " + this.access_token);
+
+			List<MediaType> acceptableMediaTypes = new ArrayList<MediaType>();
+            acceptableMediaTypes.add(MediaType.MULTIPART_FORM_DATA);
+            headers.setAccept(acceptableMediaTypes);
+
+            MultiValueMap<String, Object> valueMap = new LinkedMultiValueMap<String, Object>();
+
+            if (comment != null) {
+            	String message = comment.toJSONString();
+        		// log sending message
+            	logger.info("Send: " + message);
+
+    			valueMap.add("payload", message);
+            }
+            if (audio != null) {
+            	valueMap.add("audio", new FileSystemResource(audio));
+            }
+            if (file != null) {
+            	valueMap.add("file", new FileSystemResource(file));
+            }
+
+            HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<MultiValueMap<String, Object>>(valueMap, headers);
+
+    		RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<Map<String, String>> result = restTemplate.exchange(
+            		URL_ENDPOINT, HttpMethod.POST, entity,
+                    new ParameterizedTypeReference<Map<String,String>>() {});
 
         } catch (JsonProcessingException e) {
             logger.error("Invalid message format!", e);

@@ -1,5 +1,6 @@
 package com.moxtra.examples;
 
+import java.io.File;
 import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.regex.Matcher;
@@ -133,7 +134,30 @@ public class MyBot extends MoxtraBot {
 		
 		chat.sendRequest(comment); 
 	}		
+	
+	@EventHandler(patterns = {"(file|audio|attach)? upload", "attachment"})
+	public void onUploadHears(Chat chat) {
+		String username = chat.getUsername();
+		String text = chat.getComment().getText();
 		
+		if (chat.getPrimatches() > 0) {
+			logger.info("message has been handled: @{} {} for {} times", username, text, chat.getPrimatches());
+			return;
+		} else {
+			Matcher matcher = chat.getMatcher();
+			
+			logger.info("message for @{} {} on {}", username, text, matcher.group(0));
+		}
+			
+		String message = "@" + username + " upload files";
+		
+		ClassLoader classLoader = getClass().getClassLoader();
+		File file = new File(classLoader.getResource("file/start.png").getFile());
+		File audio = new File(classLoader.getResource("file/test_comment.3gpp").getFile());		
+		
+		chat.sendRequest(new Comment.Builder().text(message).build(), file, audio);
+	}		
+	
 	@EventHandler(event = EventType.POSTBACK)
 	public void onPostback(Chat chat) {
 		String username = chat.getUsername();

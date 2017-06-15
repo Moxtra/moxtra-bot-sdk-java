@@ -163,6 +163,18 @@ Other message events are *EventType.PAGE_CREATED*, *EventType.PAGE_ANNOTATED*, *
 >Comment comment = new Comment.Builder().fields(fieldsMap).build();
 >chat.sendRequest(comment); 
 >```
+>
+>- Upload File or Add Audio Comment for audio file (audio/x-m4a, audio/3gpp)  
+>```java
+>String message = "@" + username + " upload files";
+>    
+>ClassLoader classLoader = getClass().getClassLoader();
+>File file = new File(classLoader.getResource("file/start.png").getFile());
+>File audio = new File(classLoader.getResource("file/test_comment.3gpp").getFile());    
+>    
+>chat.sendRequest(new Comment.Builder().text(message).build(), file, audio);
+>```
+>
 
 - Matching keywords for more than once:
 
@@ -341,16 +353,26 @@ public class MoxtraBotApplication {
         if (chat == null) {
           logger.info("Unable to get pending request!");  
           
+          String bot_access_token = moxtraAccessToken.get(binder_id);
+
           // create a new Chat
-          chat = new Chat();
-          chat.setAccess_token(moxtraAccessToken.get(binder_id));
-        }  
+          if (bot_access_token != null) {
+            chat = new Chat();
+            chat.setAccess_token(bot_access_token);
+          }
+        }
         
-        String message = "@" + username + " has already obtained access_token from the 3rd party service!";
-        
-        chat.sendRequest(new Comment.Builder().text(message).build());  
-        
-        response.setStatus(HttpServletResponse.SC_OK);
+        if (chat != null) {
+          String message = "@" + username + " has already obtained access_token from the 3rd party service!";
+          
+          chat.sendRequest(new Comment.Builder().text(message).build());
+        }
+
+        // close window
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();
+        out.print("<html><head></head><body onload=\"javascript:window.close();\"></body></html>");
+        out.flush();
         
       } else {
   
@@ -572,6 +594,9 @@ A typical `Chat` instance has the following structure:
   // sendRequest API
   public boolean sendRequest(Comment comment) {    
   };
+  // sendRequest API for Upload File and Add Audio Comment for audio file (audio/x-m4a, audio/3gpp)
+  public boolean sendRequest(Comment comment, File file, File audio) {    
+  };
   // getBinderInfo API
   public String getBinderInfo() {    
   };
@@ -774,6 +799,7 @@ Check the `examples` directory to see the example of the following capabilities:
 - Using regular expression to capture text message
 - Sending RichText message
 - Sending Fields message
+- Upload file and add audio comment
 - Handling Account Link with OAuth2 
 
 To run the examples, make sure to complete the bot creation on [MoxtraBot configuration](https://developer.moxtra.com/nextbots) and setup required configurations in /resources/application.properties. There are many ways to run the example, below is using Maven plugin:

@@ -74,6 +74,10 @@ verify_token=YOUR_VERIFY_TOKEN
 client_secret=YOUR_CLIENT_SECRET
 ```
 
+- Set correct API endpoint if testing in the Sandbox environment:
+> In the Chat.java class, change to 
+> **private static final String URL_ENDPOINT = "https://apisandbox.moxtra.com/v1/messages";** from private static final String URL_ENDPOINT = "https://api.moxtra.com/v1/messages";
+
 - Create a sub-class of `MoxtraBot` and add `@EventHandler` annotation to methods that handle messages for various events: *EventType.MESSAGE*, *EventType.BOT_INSTALLED*, *EventType.BOT_UNINSTALLED*, *EventType.POSTBACK*, and *EventType.ACCOUNT_LINK*. 
 
 ```java

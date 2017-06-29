@@ -40,7 +40,7 @@ import org.springframework.web.client.RestTemplate;
 
 public class Chat {
 	private static final Logger logger = LoggerFactory.getLogger(Chat.class);
-	private static final String URL_ENDPOINT = "https://api.moxtra.com/messages";
+	private static final String URL_ENDPOINT = "https://api.moxtra.com/v1/messages";
 	private String user_id;
 	private String username;
 	private String binder_id;

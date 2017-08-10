@@ -6,6 +6,7 @@ public class ChatMessage implements Serializable {
 	private String message_id;
 	private String message_type;
 	private String binder_id;
+	private String bot_id;
 	private String access_token;
 	private Event event;
 
@@ -17,6 +18,14 @@ public class ChatMessage implements Serializable {
 		message_id = id;
 	}
 	
+	public String getBot_id() {
+		return bot_id;
+	}
+
+	public void setBot_id(String bot_id) {
+		this.bot_id = bot_id;
+	}
+
 	public String getAccess_token() {
 		return access_token;
 	}

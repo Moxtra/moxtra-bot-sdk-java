@@ -81,6 +81,8 @@ public class OAuth2 {
 
 			logger.info("oauth access_token: " + access_token);
 
+			bot.handleAccountLinkAccessToken(request, access_token);
+
 			// response the jsonAccessToken
 			String jsonObject = new ObjectMapper().writeValueAsString(jsonAccessToken);
 			response.setContentType("application/json");
@@ -88,8 +90,6 @@ public class OAuth2 {
 			PrintWriter out = response.getWriter();
 			out.print(jsonObject);
 			out.flush();
-
-			bot.handleAccessToken(request, access_token);
 
 		} catch (Exception e) {
 			logger.error(e.getMessage());

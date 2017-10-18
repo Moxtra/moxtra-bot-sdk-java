@@ -1,6 +1,6 @@
-# Moxtra Bot SDK for Java
+# Moxtra Bot SDK for Java with Spring Boot
 
-Moxtra Bot SDK is for building Spring Boot based application that will ease and streamline the Bot development for Moxtra's business collaboration platform. The design allows developers to focus on application logic instead of APIs for sending and receiving data payload.
+Moxtra Bot SDK is for building Spring Boot based `Bot application` that will ease and streamline the Bot development for Moxtra's business collaboration platform. The design allows developers to focus on application logic instead of APIs for sending and receiving data payload.
 
 ```java
 @Component
@@ -12,7 +12,11 @@ public class MyBot extends MoxtraBot {
     String text = chat.getComment().getText();
     
     String message = "Echo: @" + username + " " + text;
-    
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token()); 
+
     chat.sendRequest(new Comment.Builder().text(message).build());
   }
 ```
@@ -24,12 +28,21 @@ public class MyBot extends MoxtraBot {
 
 ## Core Concepts
 
-- Bot verification flow: before saving bot configuration during bot creation, a JSONP verification request with message_type=bot_verify&verify_token='YOUR_VERIFY_TOKEN'&  
-bot_challenge='RANDOM_STRING' sending to the configured verify_url. To complete the bot creation, this request expects the same 'RANDOM_STRING' gets returned.  
+- Definitions:
+>* **Bot application** (the 3rd party Bot) has a corresponding **bot app** configuration in Moxtra. 
+>* Each **bot app** is identified by *client_id* in the message event. 
+>* `Bot app` becomes a **bot user** (an org user) once the `bot app` is enabled in an org. This **bot user** is identified by *org_id* in the message event.
 
-- Binder based bot installation: each received message event has the corresponding *binder_id* and *access_token* for reply, which are encapsulated in the `Chat` object  
+- Bot lifecycle: 
+>* Partner Admin creates a **bot app** configuration via Partner Admin Console
+>* An Org Admin enables this `bot app` via Org Admin Console or API, this `bot app` becomes a **bot user** inside this org. A *EventType.BOT_ENABLED* event gets generated.
+>* When the Org Admin disabled this `bot app` via Org Admin Console or API, a *EventType.BOT_DISABLED* event gets generated.    
+>* Binder users of the same org as the binder owner can then add this **bot user** into the binder. A *EventType.BOT_INSTALLED* event gets generated.
+>* When the **bot user** leaves the binder, a *EventType.BOT_UNINSTALLED* event gets generated.
 
-- Each `POST` message event from Moxtra has `x-moxtra-signature` header set as HMA-SHA1 hash of the message content signed with `client_secret` 
+- Each received message event has the corresponding *binder_id*, *client_id*, and *org_id*, which are encapsulated in the `Chat` object. `Bot application` can use *client_id*, *org_id*, and *timestamp* to generate a *signature* signed with *client_secret* to create a `bot user` **access_token**.  
+
+- Each `POST` message event from Moxtra has `x-moxtra-signature` header set as HMA-SHA1 hash of the message content signed with `client_secret`    
 
 - Different message event has the corresponding object in the event; however, the basic message structure remains the same. Below shows a `Comment` message event format:
 ```js
@@ -37,8 +50,8 @@ bot_challenge='RANDOM_STRING' sending to the configured verify_url. To complete 
   message_id: 'MESSAGE_ID',
   message_type: 'comment_posted',
   binder_id: 'BINDER_ID',
-  bot_id: 'BOT_ID',
-  access_token: 'ACCESS_TOKEN',
+  client_id: 'CLIENT_ID',
+  org_id: 'ORG_ID',
   event: {
     timestamp: 'TIMESTAMP',
     user: {
@@ -68,18 +81,18 @@ git clone https://github.com/Moxtra/moxtra-bot-sdk-java.git
 
 ## Getting Started
 
-- Create a new bot application using your `verify_token` and `client_secret` obtained from your [MoxtraBot configuration](https://developer.moxtra.com/nextbots) and place those info in /resources/application.properties as shown below to finish the bot creation:
+- Create a `Bot application` using your `client_id` and `client_secret` obtained from your [Manage Bots in Partner Admin Console](https://admin.moxtra.com) in the `bot app` creation and place those info in /resources/application.properties as shown below:
 
 ```
-verify_token=YOUR_VERIFY_TOKEN
+client_id=YOUR_CLIENT_ID
 client_secret=YOUR_CLIENT_SECRET
 ```
 
-- Set correct API endpoint if testing in the Sandbox environment:
-> In the Chat.java class, change to 
-> **private static final String URL_ENDPOINT = "https://apisandbox.moxtra.com/v1/messages";** from private static final String URL_ENDPOINT = "https://api.moxtra.com/v1/messages";
+- Set correct API endpoint for different environment in the /resources/application.properties: 
+>[Sandbox] api_endpoint=`https://apisandbox.moxtra.com/v1`    
+>[Production] api_endpoint=`https://api.moxtra.com/v1`>
 
-- Create a sub-class of `MoxtraBot` and add `@EventHandler` annotation to methods that handle messages for various events: *EventType.MESSAGE*, *EventType.BOT_INSTALLED*, *EventType.BOT_UNINSTALLED*, *EventType.POSTBACK*, and *EventType.ACCOUNT_LINK*. 
+- Create a sub-class of `MoxtraBot` and add `@EventHandler` annotation to methods that handle messages for various events: *EventType.MESSAGE*, *EventType.BOT_ENABLED*, *EventType.BOT_DISABLED*, *EventType.BOT_INSTALLED*, *EventType.BOT_UNINSTALLED*, *EventType.POSTBACK*, and *EventType.ACCOUNT_LINK*. 
 
 ```java
 @Component
@@ -91,32 +104,49 @@ public class MyBot extends MoxtraBot {
     String text = chat.getComment().getText();
     
     String message = "@" + username + " says " + text;
-    
+ 
+     // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());
+ 
     chat.sendRequest(new Comment.Builder().text(message).build());
   }
   
+  @EventHandler(event = EventType.BOT_ENABLED)
+  public void onBotEnabled(Chat chat) {
+    String bot_name = chat.getBot().getName();
+
+    logger.info("Bot {} enabled on {}", bot_name, chat.getOrg_id());
+  }
+
+  @EventHandler(event = EventType.BOT_DISABLED)
+  public void onBotDisabled(Chat chat) {
+    String bot_name = chat.getBot().getName();
+
+    logger.info("Bot {} disabled on {}", bot_name, chat.getOrg_id());
+  }
+
   @EventHandler(event = EventType.BOT_INSTALLED)
   public void onBotInstalled(Chat chat) {
     String username = chat.getUsername();
     String binder_id = chat.getBinder_id();
-    String access_token = chat.getAccess_token();
-    
-    // store binder based Moxtra access_token
-    moxtraAccessToken.put(binder_id, access_token);
-    
-    String message = "@" + username + " Welcome to MoxtraBot!!"; 
+    String bot_name = chat.getBot().getName();
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());
+
+    String message = "@" + username + " Welcome to " + bot_name + "!!" ;
     chat.sendRequest(new Comment.Builder().text(message).build());
   }
-  
+
   @EventHandler(event = EventType.BOT_UNINSTALLED)
-  public void onBotUninstalled(ChatMessage chatMessage) {
-    String binder_id = chatMessage.getBinder_id();
+  public void onBotUninstalled(Chat chat) {
+    String bot_name = chat.getBot().getName();
+    String binder_id = chat.getBinder_id();
     
-    // remove Moxtra access_token for this binder
-    moxtraAccessToken.remove(binder_id);
-    
-    logger.info("Bot uninstalled on {}", binder_id);
-  }  
+    logger.info("Bot {} uninstalled on {}", bot_name, binder_id);
+  }
 ```
 Other message events are *EventType.PAGE_CREATED*, *EventType.PAGE_ANNOTATED*, *EventType.FILE_UPLOADED*, *EventType.TODO_CREATED*, *EventType.TODO_COMPLETED* and *EventType.MEET_RECORDING_READY*.
 
@@ -139,10 +169,22 @@ Other message events are *EventType.PAGE_CREATED*, *EventType.PAGE_ANNOTATED*, *
     String username = chat.getUsername();
     
     String message = "@" + username + " do you need to schedule a meet?";
-    
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());    
+
     chat.sendRequest(new Comment.Builder().text(message).build());
   }  
 ```
+>- Obtain access_token
+>```java
+>Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+>```
+>- Set access_token before sending message
+>```java
+>chat.setAccess_token(token.getAccess_token());
+>```
 >- Send Text  
 >```java
 >String message = "@" + username + " do you need to schedule a meet?";
@@ -183,11 +225,12 @@ Other message events are *EventType.PAGE_CREATED*, *EventType.PAGE_ANNOTATED*, *
 
 - Matching keywords for more than once:
 
-If there are more than one keyword matches in the method for `@EventHandler` annotation with `patterns` attribute, the same method as well as the generic method for *EventType.MESSAGE* without `patterns` attribute would get invoked. By checking `chat.getPrimatches()` to determine whether to handle in this situation. 
+If there are more than one keyword matches in the method for `@EventHandler` annotation with `patterns` attribute, the same method as well as the generic method for *EventType.MESSAGE* without `patterns` attribute would get invoked.    
+
+By checking `chat.getPrimatches()` to determine whether to handle in this situation. You can turn off the generic handler in case there are keywords matches via **bot.setGenericHandling(false);**
 
 `Matcher matcher = chat.getMatcher();` - the word that matches the regular expression or the whole keyword can be determined by checking [Matcher](https://docs.oracle.com/javase/7/docs/api/java/util/regex/Matcher.html) group() APIs
 `chat.getPrimatches()` - the number of times that match happened before 
-
 
 ```java
   @EventHandler(event = EventType.MESSAGE)
@@ -201,7 +244,11 @@ If there are more than one keyword matches in the method for `@EventHandler` ann
     }
     
     String message = "Echo: @" + username + " " + text;
-    
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());  
+
     chat.sendRequest(new Comment.Builder().text(message).build());
   }
   
@@ -220,6 +267,10 @@ If there are more than one keyword matches in the method for `@EventHandler` ann
     }
        
     String message = "@" + username + " do you need to schedule a meet?";
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());  
     
     chat.sendRequest(new Comment.Builder().text(message).build());
   }  
@@ -259,6 +310,10 @@ The *EventType.POSTBACK* event gets triggered when the `POSTBACK` button is tapp
     String payload = chat.getPostback().getPayload();
     
     String message = "@" + username + " specific postback " + text + " " + payload; 
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());  
     
     chat.sendRequest(new Comment.Builder().text(message).build());
   }    
@@ -270,6 +325,10 @@ The *EventType.POSTBACK* event gets triggered when the `POSTBACK` button is tapp
     String payload = chat.getPostback().getPayload();
     
     String message = "@" + username + " generic postback " + text + " " + payload; 
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());  
     
     chat.sendRequest(new Comment.Builder().text(message).build());
   }  
@@ -282,7 +341,7 @@ You can setup your own preferred endpoints for handling `GET` and `POST` methods
 ```java
 @RestController
 @SpringBootApplication
-public class MoxtraBotApplication {
+public class MoxtraBotApplication extends SpringBootServletInitializer {
   private static final Logger logger = LoggerFactory.getLogger(MoxtraBotApplication.class);
 
   @Autowired
@@ -318,7 +377,7 @@ public class MoxtraBotApplication {
 ## Account Linking
 
 - Link Moxtra account with the 3rd party service through Account Linking flow:
->1. User sends a request to Bot, which requires access to a 3rd party service that needs user's authorization. Bot does not have prior user account linking info with the 3rd party service.
+>1. User sends a request to Bot (**Bot application**), which requires access to a 3rd party service that needs user's authorization. Bot does not have prior user account linking info with the 3rd party service.
 >2. Bot sends `ACCOUNT_LINK` button back to Moxtra chat.
 >3. User clicks the button and a [JSON web token](https://en.wikipedia.org/wiki/JSON_Web_Token) sends back to Bot via the `GET` method.
 >4. Bot verifies the token using `client_secret` as the key and decodes the token; Bot obtains *user_id*, *username*, and *binder_id* via handling the *EventType.ACCOUNT_LINK* event.
@@ -333,69 +392,77 @@ public class MoxtraBotApplication {
 ```
 - Handle *EventType.ACCOUNT_LINK* event:
 ```java
-  @EventHandler(event = EventType.ACCOUNT_LINK)
-  public void onAccountLink(AccountLink accountLink, HttpServletResponse response) {
-    String user_id = accountLink.getUser_id();
-    String binder_id = accountLink.getBinder_id();
-    String username = accountLink.getUsername();
-    
-    // obtain pending response
-    Chat chat = pendingResponse.get(binder_id + user_id);
-    
-    if (chat != null) {
-      String message = "@" + username + " performs an account_link for user_id: " + user_id + " on binder_id: " + binder_id;
+@EventHandler(event = EventType.ACCOUNT_LINK)
+public void onAccountLink(AccountLink accountLink, HttpServletResponse response) {
+  String user_id = accountLink.getUser_id();
+  String binder_id = accountLink.getBinder_id();
+  String username = accountLink.getUsername();
+  String client_id = accountLink.getClient_id();
+  String org_id = accountLink.getOrg_id();
       
-      chat.sendRequest(new Comment.Builder().text(message).build());  
-    } else {
-      chat = pendingOAuth.get(user_id);      
-    }
+  // obtain pending response
+  Chat chat = pendingResponse.get(binder_id + user_id);
+  
+  if (chat != null) {
     
-    String access_token = accountLinked.get(user_id);
+    String message = "@" + username + " performs an account_link for user_id: " + user_id + " on binder_id: " + binder_id;
     
-    try {
-      if (access_token != null) {
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token());        
+    
+    chat.sendRequest(new Comment.Builder().text(message).build());  
+  } else {
+    chat = pendingOAuth.get(user_id);      
+  }
+  
+  String al_access_token = accountLinked.get(user_id);
+  
+  try {
+    if (al_access_token != null) {
+      
+      // obtain access_token
+      Token token = getAccessToken(client_id, org_id);
+      
+      String message = "@" + username + " has already obtained access_token from the 3rd party service!";
+      
+      if (chat == null) {
+        logger.info("Unable to get pending request!");  
+  
+        // create a new Chat
+        chat = new Chat();
         
-        if (chat == null) {
-          logger.info("Unable to get pending request!");  
-          
-          String bot_access_token = moxtraAccessToken.get(binder_id);
+        chat.setAccess_token(token.getAccess_token());
+        chat.sendRequest(new Comment.Builder().text(message).build());  
 
-          // create a new Chat
-          if (bot_access_token != null) {
-            chat = new Chat();
-            chat.setAccess_token(bot_access_token);
-          }
-        }
-        
-        if (chat != null) {
-          String message = "@" + username + " has already obtained access_token from the 3rd party service!";
-          
-          chat.sendRequest(new Comment.Builder().text(message).build());
-        }
-
-        // close window
-        response.setContentType("text/html");
-        PrintWriter out = response.getWriter();
-        out.print("<html><head></head><body onload=\"javascript:window.close();\"></body></html>");
-        out.flush();
-        
       } else {
-  
-        pendingResponse.remove(binder_id + user_id);
-  
-        // save chat to the pendingOAuth 
-        pendingOAuth.put(user_id, chat);
-  
-        // redirect if needed  
-        Cookie myCookie = new Cookie("user_id", user_id);
-        response.addCookie(myCookie);
-          
-        response.sendRedirect("/auth");        
+        chat.setAccess_token(token.getAccess_token());          
+        chat.sendRequest(new Comment.Builder().text(message).build());
       }
-    } catch (Exception e) {
-      logger.error("Unable to handle account_link: " + e.getMessage());
-    }      
-  }    
+      
+      // close window
+      response.setContentType("text/html");
+      PrintWriter out = response.getWriter();
+      out.print("<html><head></head><body onload=\"javascript:window.close();\"></body></html>");
+      out.flush();        
+      
+    } else {
+
+      pendingResponse.remove(binder_id + user_id);
+
+      // save chat to the pendingOAuth 
+      pendingOAuth.put(user_id, chat);
+
+      // redirect if needed  
+      Cookie myCookie = new Cookie("user_id", user_id);
+      response.addCookie(myCookie);
+        
+      response.sendRedirect("/auth");        
+    }
+  } catch (Exception e) {
+    logger.error("Unable to handle account_link: " + e.getMessage());
+  }      
+}     
 ```
 - Handle OAuth2 flow:
 
@@ -465,6 +532,10 @@ Handle OAuth2 in Spring Boot Application:
       
       String message = "@" + username + " after account linked, bot will complete your request: " + text;
       
+      // obtain access_token
+      Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+      chat.setAccess_token(token.getAccess_token());        
+      
       chat.sendRequest(new Comment.Builder().text(message).build());        
     }    
   }    
@@ -478,8 +549,9 @@ Handle OAuth2 in Spring Boot Application:
 
 | `configuration` key | Type | Required |
 |:--------------|:-----|:---------|
-| `verify_token` | string | `Y` |
+| `client_id` | string | `Y` |
 | `client_secret` | string | `Y` |
+| `api_endpoint` | string | `N` |
 
 Creates a new `MoxtraBot` instance. 
 
@@ -494,17 +566,19 @@ Subscribe to the message event emitted by the bot, and a callback gets invoked w
 
 | Event | Callback Parameters | Description |
 |:------|:-----|:-----|
-| *EventType.BOT_INSTALLED* | Chat object - EventBot: chat.getBot() | The user installed the bot in one binder |
-| *EventType.BOT_UNINSTALLED* | ChatMessage object | The user removed the bot from the binder |
-| *EventType.MESSAGE* | Chat object - EventComment: chat.getComment() | The bot received a text message from the user by commenting in a binder |
-| *EventType.POSTBACK* | Chat object - EventPostback: chat.getPostback() | The bot received a postback call from the user after  clicking a `POSTBACK` button |
-| *EventType.ACCOUNT_LINK* | AccountLink object, Response | The bot received an account_link call from the user after clicking an `ACCOUNT_LINK` button |
-| *EventType.PAGE_CREATED* | Chat object - EventPage: chat.getPage() | The bot received a message that a page was created in the binder |
-| *EventType.FILE_UPLOADED* | Chat object - EventFile: chat.getFile() | The bot received a message that a file was uploaded in the binder |
-| *EventType.PAGE_ANNOTATED* | Chat object - EventAnnotate: chat.getAnnotate() | The bot received a message that an annotation was created on a page in the binder |
-| *EventType.TODO_CREATED* | Chat object - EventTodo: chat.getTodo() | The bot received a message that a todo item was created in the binder |
-| *EventType.TODO_COMPLETED* | Chat object - EventTodo: chat.getTodo() | The bot received a message that a todo item was completed in the binder |
-| *EventType.MEET_RECORDING_READY* | Chat object - EventMeet:  chat.getMeet() | The bot received a message that a meet recording was ready in the binder |
+| *EventType.BOT_ENABLED* | Chat object - EventBot: chat.getBot() | Org Admin enabled the `bot app` in one org |
+| *EventType.BOT_DISABLED* | Chat object - EventBot: chat.getBot() | Org Admin disabled the `bot app` from the org |
+| *EventType.BOT_INSTALLED* | Chat object - EventBot: chat.getBot() | A binder user added the `bot user` in the binder |
+| *EventType.BOT_UNINSTALLED* | Chat object - EventBot: chat.getBot() | A binder user removed the `bot user` from the binder |
+| *EventType.MESSAGE* | Chat object - EventComment: chat.getComment() | The `Bot application` received a text message from the user by commenting in a binder |
+| *EventType.POSTBACK* | Chat object - EventPostback: chat.getPostback() | The `Bot application` received a postback call from the user after  clicking a `POSTBACK` button |
+| *EventType.ACCOUNT_LINK* | AccountLink object, Response | The `Bot application` received an account_link call from the user after clicking an `ACCOUNT_LINK` button |
+| *EventType.PAGE_CREATED* | Chat object - EventPage: chat.getPage() | The `Bot application` received a message that a page was created in the binder |
+| *EventType.FILE_UPLOADED* | Chat object - EventFile: chat.getFile() | The `Bot application` received a message that a file was uploaded in the binder |
+| *EventType.PAGE_ANNOTATED* | Chat object - EventAnnotate: chat.getAnnotate() | The `Bot application` received a message that an annotation was created on a page in the binder |
+| *EventType.TODO_CREATED* | Chat object - EventTodo: chat.getTodo() | The `Bot application` received a message that a todo item was created in the binder |
+| *EventType.TODO_COMPLETED* | Chat object - EventTodo: chat.getTodo() | The `Bot application` received a message that a todo item was completed in the binder |
+| *EventType.MEET_RECORDING_READY* | Chat object - EventMeet:  chat.getMeet() | The `Bot application` received a message that a meet recording was ready in the binder |
 
 ##### Example:
 
@@ -526,6 +600,10 @@ Subscribe to the message event emitted by the bot, and a callback gets invoked w
     richtext.append("[/i][/td][/tr][tr][td][color=Red]");
     richtext.append(text);
     richtext.append("[/color][/td][/tr][/table]");  
+  
+     // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token()); 
     
     chat.sendRequest(new Comment.Builder().richtext(richtext.toString()).build());
   }
@@ -537,7 +615,11 @@ Subscribe to the message event emitted by the bot, and a callback gets invoked w
     String payload = chat.getPostback().getPayload();
     
     String message = "@" + username + " generic postback " + text + " " + payload; 
-    
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token()); 
+
     chat.sendRequest(new Comment.Builder().text(message).build());
   }  
 ```
@@ -570,7 +652,11 @@ Using pattern matching mechanism to handle desired message. The `patterns` param
     Button postback_button = new Button("Not Sure?");
     
     String message = "@" + username + " do you need to schedule a meet?";
-    
+
+    // obtain access_token
+    Token token = getAccessToken(chat.getClient_id(), chat.getOrg_id());
+    chat.setAccess_token(token.getAccess_token()); 
+
     chat.sendRequest(new Comment.Builder().text(message).addButton(account_link_button)
         .addButton(postback_button).build());
   }  
@@ -581,7 +667,7 @@ Using pattern matching mechanism to handle desired message. The `patterns` param
 
 #### `new Chat(ChatMessage)`
 
-Chat instance is created in the callback for each type of message event except *EventType.BOT_UNINSTALLED* and *EventType.ACCOUNT_LINK*. Therefore, chat.getBinder_id(), chat.getUser_id(), chat.getUsername(), and chat.getAccess_token() as well as corresponding event object are pre-populated.  
+Chat instance is created in the callback for each type of message event except *EventType.ACCOUNT_LINK*. Therefore, chat.getBinder_id(), chat.getUser_id(), chat.getUsername(), chat.getClient_id(), and chat.getOrg_id() as well as corresponding event object are pre-populated.  
 
 A typical `Chat` instance has the following structure:
 
@@ -590,7 +676,9 @@ A typical `Chat` instance has the following structure:
   private String user_id;
   private String username;
   private String binder_id;
-  private String access_token;
+  private String client_id;
+  private String org_id;
+  private String access_token;  // for sending message
   private int primatches = 0;  // NUMBER_OF_MATCHES_BEFORE
   private Matcher matcher;     // MATCHED_KEYWORD
   private EventType eventType;
@@ -605,20 +693,21 @@ A typical `Chat` instance has the following structure:
   // getBinderInfo API
   public String getBinderInfo() {    
   };
-  // getUserInfo API
-  public String getUserInfo() {    
-  }; 
 }
 ```
 #### `getBinderInfo()`
 
-This API is to get the installed binder information, which can use the `access_token` obtained on the *EventType.BOT_INSTALLED* event.  
+This API is to get the installed binder information.  
 
 ##### Example:
 
 ```java
 Chat chat = new Chat();
-chat.setAccess_token(access_token);
+chat.setBinder_id(binder_id);
+
+// obtain access_token
+Token token = getAccessToken(client_id, org_id);
+chat.setAccess_token(token.getAccess_token());
 
 String binder_info = chat.getBinderInfo();
 ```
@@ -654,47 +743,18 @@ String binder_info = chat.getBinderInfo();
 }
 ```
 
-#### `getUserInfo()`
-
-This API is to get the specific user information in the binder, which can use the `access_token` obtained on the *EventType.BOT_INSTALLED* event.  
-
-##### Example:
-
-```java
-Chat chat = new Chat();
-chat.setAccess_token(access_token);
-chat.setUser_id(user_id);
-
-String user_info = chat.getUserInfo();
-```
-##### Result:
-
-```java
-{
-  "code": "RESPONSE_SUCCESS",
-  "data": {
-    "id": "Utkj3YC5BxRHCCbq9widP67",
-    "email": "john@test.com",
-    "name": "John Smith",
-    "picture_uri": "https://www.moxtra.com/board/BiHGjPE2ZbsHyhVujuU4TUL/user/2/1763",
-    "phone_number": "",
-    "unique_id": ""
-  }
-}
-```
-
 ### ChatMessage Class
 
 ```
   private String message_id;
   private String message_type;
   private String binder_id;
-  private String bot_id;
-  private String access_token;
+  private String org_id;
+  private String client_id;
   private Event event;
 ```  
   
-#### `EventBot` Class for `EventType.BOT_INSTALLED`
+#### `EventBot` Class for `EventType.BOT_ENABLED`, `EventType.BOT_DISABLED`, `EventType.BOT_INSTALLED`, and `EventType.BOT_UNINSTALLED`
 ```
   private String id;    // BOT_ID
   private String name;  // BOT_NAME
@@ -808,7 +868,7 @@ Check the `examples` directory to see the example of the following capabilities:
 - Upload file and add audio comment
 - Handling Account Link with OAuth2 
 
-To run the examples, make sure to complete the bot creation on [MoxtraBot configuration](https://developer.moxtra.com/nextbots) and setup required configurations in /resources/application.properties. There are many ways to run the example, below is using Maven plugin:
+To run the examples, make sure to complete the `bot app` creation on [Manage Bots in Partner Admin Console](https://admin.moxtra.com), Org Admin enables this `bot app`, and setup required configurations in /resources/application.properties. There are many ways to run the example, below is using Maven plugin:
 
 ```
 $ mvn spring-boot:run

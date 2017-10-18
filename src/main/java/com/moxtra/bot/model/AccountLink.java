@@ -6,7 +6,8 @@ public class AccountLink implements Serializable {
 	private String user_id;
 	private String username;
 	private String binder_id;
-	private Long timestamp;
+	private String client_id;
+	private String org_id;
 
 	
 	public String getUser_id() {
@@ -26,11 +27,17 @@ public class AccountLink implements Serializable {
 	}
 	public void setBinder_id(String binder_id) {
 		this.binder_id = binder_id;
+	}	
+	public String getClient_id() {
+		return client_id;
 	}
-	public Long getTimestamp() {
-		return timestamp;
+	public void setClient_id(String client_id) {
+		this.client_id = client_id;
 	}
-	public void setTimestamp(Long timestamp) {
-		this.timestamp = timestamp;
+	public String getOrg_id() {
+		return org_id;
+	}
+	public void setOrg_id(String org_id) {
+		this.org_id = org_id;
 	}
 }

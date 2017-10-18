@@ -2,7 +2,6 @@ package com.moxtra.bot;
 
 
 import java.util.List;
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
@@ -26,13 +25,23 @@ import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.codec.Base64;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moxtra.bot.annotation.EventHandler;
 import com.moxtra.bot.model.AccountLink;
 import com.moxtra.bot.model.ChatMessage;
 import com.moxtra.bot.model.EventType;
+import com.moxtra.bot.model.Token;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureException;
@@ -40,6 +49,13 @@ import io.jsonwebtoken.SignatureException;
 public abstract class MoxtraBot {
 	private static final Logger logger = LoggerFactory.getLogger(MoxtraBot.class);
 	private static final String HMAC_SHA1_ALGORITHM = "HmacSHA1";
+	private static final String HMAC_SHA256_ALGORITHM = "HmacSHA256";
+	private boolean genericHandling = false;
+	private boolean verifyPostSignature = false;	
+	// key - org_id;  value - Token
+	private HashMap<String, Token> moxtraAccessToken = new HashMap<String,Token>();
+	public static String api_endpoint;
+
 	
     /**
      * A Map of all methods annotated with {@link EventHandler} 
@@ -48,21 +64,45 @@ public abstract class MoxtraBot {
      */
     private final Map<String, List<MethodWrapper>> eventToMethodsMap = new HashMap<>();
 	
-    @Value("${verify_token}")
-    private String verify_token;
+    @Value("${client_id}")
+    private String client_id;
 
     @Value("${client_secret}")
     private String client_secret;
-
-
-    public String getVerifyToken() {
-    	return verify_token;
+    
+    @Value("${api_endpoint:https://api.grouphour.com/v1}")
+    public void setApi_endpoint(String endpoint) {
+        api_endpoint = endpoint;
     }
     
-    public String getClientSecret() {
+    public static String getApi_endpoint() {
+		return api_endpoint;
+	}
+
+    public String getClient_id() {
+		return client_id;
+	}
+
+	public String getClientSecret() {
     	return client_secret;
     }
-        
+    
+	public boolean isGenericHandling() {
+		return genericHandling;
+	}
+
+	public void setGenericHandling(boolean genericHandling) {
+		this.genericHandling = genericHandling;
+	}
+	
+	public boolean isVerifyPostSignature() {
+		return verifyPostSignature;
+	}
+
+	public void setVerifyPostSignature(boolean verifyPostSignature) {
+		this.verifyPostSignature = verifyPostSignature;
+	}
+
 	public MoxtraBot() {
         Method[] methods = this.getClass().getMethods();
         for (Method method : methods) {
@@ -111,44 +151,7 @@ public abstract class MoxtraBot {
     	String message_type = request.getParameter("message_type");
     	
     	logger.info("Get Message: " + message_type);
-
-    	if ("bot_verify".equals(message_type)) {
-    		String verifyToken = request.getParameter("verify_token");	
-    		
-    		logger.info("verify_token: " + verifyToken + " configured: " + verify_token);
-    		
-    		if (verifyToken != null && verifyToken.equals(verify_token)) {
-    			// response challenge
-    			String challenge = request.getParameter("bot_challenge");	
-    			
-    	        PrintWriter out = response.getWriter();
-    	        
-    	        // for JSONP
-    	        String callback = request.getParameter("callback");
-    	        if (callback != null) {
-        	        response.setContentType("application/javascript");
-    	        	out.println(callback + "(\"" + challenge + "\")");
-    	        } else {
-        	        response.setContentType("text/plain");
-    	        	out.println(challenge);
-    	        }
-    			
-    		} else {    			
-    			logger.error("Verification Failed!");
-    			
-    	        // for JSONP
-    	        String callback = request.getParameter("callback");
-    	        if (callback != null) {
-    	        	response.setContentType("application/javascript");
-    	        	PrintWriter out = response.getWriter();
-    	        	out.println(callback + "(\"Error-Verification\")");
-    	        } else { 
-    	        	// response 403
-    	        	response.sendError(HttpServletResponse.SC_FORBIDDEN);
-    	        }
-    		}
-    	}
-    	
+  	
     	if ("account_link".equals(message_type)) { 		
     		String token = request.getParameter("account_link_token");
     		
@@ -164,7 +167,8 @@ public abstract class MoxtraBot {
 		            accountLink.setUser_id((String) body.get("user_id"));
 		            accountLink.setUsername((String) body.get("username"));
 		            accountLink.setBinder_id((String) body.get("binder_id"));
-		            accountLink.setTimestamp((Long) body.get("timestamp"));
+		            accountLink.setClient_id((String) body.get("client_id"));
+		            accountLink.setOrg_id((String) body.get("org_id"));
 
 	                for (MethodWrapper methodWrapper : methodWrappers) {
 	                    Method method = methodWrapper.getMethod();
@@ -175,8 +179,10 @@ public abstract class MoxtraBot {
             	// response 412
             	logger.error("Unable to verify account_link_token!");
             	response.sendError(HttpServletResponse.SC_PRECONDITION_FAILED);
-            }    		
-    	}
+            }
+    	} else {
+    		response.sendError(HttpServletResponse.SC_BAD_REQUEST);    		
+    	} 
     	
     }
     
@@ -192,10 +198,6 @@ public abstract class MoxtraBot {
 
     	try {
     		request.setCharacterEncoding("UTF-8");
-    		String signatureHash = request.getHeader("x-moxtra-signature");
-    	    if (StringUtils.isEmpty(signatureHash)) {
-    	    	throw new Exception("No request signature!");
-    	    }    		
     		
     	    // read from request
     	    ServletInputStream stream = request.getInputStream();
@@ -211,19 +213,25 @@ public abstract class MoxtraBot {
     	    byte[] body = buffer.toByteArray();    	      	    
     	    
     	    logger.info("body: " + new String(body, "UTF-8"));
-    	      
-    	    // validate signature
-    	    try {
-    	    	String expectedHash = calculateHMAC_SHA1(body, client_secret);
-    	    	if (!signatureHash.equals(expectedHash)) {
-    	    		throw new Exception("Validation on the request signature failed! signatureHash: " + signatureHash + " expectedHash: " + expectedHash);
-    	    	}
-    	    	
-    	    } catch (Exception e) {
-    	    	logger.error(e.getMessage());
-    	    	throw e;
+    	    
+    	    if (this.isVerifyPostSignature()) {
+	    		String signatureHash = request.getHeader("x-moxtra-signature");
+	    	    if (StringUtils.isEmpty(signatureHash)) {
+	    	    	throw new Exception("No request signature!");
+	    	    }    	    	
+	    	    // validate signature
+	    	    try {
+	    	    	String expectedHash = calculateHMAC_SHA1(body, client_secret);
+	    	    	if (!signatureHash.equals(expectedHash)) {
+	    	    		throw new Exception("Validation on the request signature failed! signatureHash: " + signatureHash + " expectedHash: " + expectedHash);
+	    	    	}
+	    	    	
+	    	    } catch (Exception e) {
+	    	    	logger.error(e.getMessage());
+	    	    	throw e;
+	    	    }
     	    }
-    		
+    	    
     	    // get body to JSON object
     		ObjectMapper mapper = new ObjectMapper();
     		ChatMessage chatMessage = mapper.readValue(body, ChatMessage.class);
@@ -233,7 +241,10 @@ public abstract class MoxtraBot {
         	String message_type = chatMessage.getMessage_type();
    
         	switch(message_type) {
-      		case "bot_installed":   		
+      		case "bot_enabled":
+      		case "bot_disabled":
+        	case "bot_installed": 
+      		case "bot_uninstalled":	
       		case "page_created":
 			case "file_uploaded":  	
 			case "page_annotated":  	
@@ -250,16 +261,6 @@ public abstract class MoxtraBot {
     	        }
 				break;
       	    
-    		case "bot_uninstalled":  
-    	        methodWrappers = eventToMethodsMap.get(EventType.BOT_UNINSTALLED.name());
-    	        if (methodWrappers != null) {
-	               for (MethodWrapper methodWrapper : methodWrappers) {
-	                    Method method = methodWrapper.getMethod();
-                        method.invoke(this, chatMessage);
-                    }
-    	        }
-    			break;
-          
     	  	case "comment_posted": 
     	  	case "comment_posted_on_page":
     	  		List<Invocable> invokees = filterMessageMethods(chatMessage);
@@ -301,7 +302,7 @@ public abstract class MoxtraBot {
         	response.setStatus(HttpServletResponse.SC_OK);
         	
         } catch (Exception e) {
-            logger.error("Error handling Message for: ", e);
+            logger.error("Error handling Message for: " + e.getMessage(), e);
         }
     }	
     
@@ -312,7 +313,7 @@ public abstract class MoxtraBot {
      * @param access_token
      * @throws Exception
      */
-    public void handleAccessToken(HttpServletRequest request, String access_token) throws Exception {
+    public void handleAccountLinkAccessToken(HttpServletRequest request, String access_token) throws Exception {
     	
     	List<MethodWrapper> methodWrappers = eventToMethodsMap.get(EventType.ACCESS_TOKEN.name());
         if (methodWrappers != null) {
@@ -323,6 +324,79 @@ public abstract class MoxtraBot {
         }          	
     	
     }
+    
+    /**
+     * To obtain moxtra access_token
+     * 
+     * @param client_id
+     * @param org_id
+     * @return
+     */
+    public Token getAccessToken(String client_id, String org_id) {
+    	
+    	Token token = moxtraAccessToken.get(org_id);    	
+		long current = System.currentTimeMillis();  
+		
+    	if (token != null) {
+    		// verify if still valid
+    		if (current < token.getExipred_time()) {
+    			return token;
+    		}
+    	}
+    	
+		RestTemplate restTemplate = new RestTemplate();
+		
+    	HttpHeaders headers = new HttpHeaders();
+        headers.set("Accept", MediaType.APPLICATION_JSON_VALUE);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        
+        String sig_value = client_id + org_id + Long.toString(current);
+        String signature = null;
+        
+        try {
+        	signature = generateSignature(sig_value.getBytes(), this.client_secret);
+        } catch (Exception e) {
+        	logger.error("Error getting signature!", e);
+        	return null;
+        }
+        
+        String url = getApi_endpoint() + "/apps/token";
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url)
+                .queryParam("client_id", client_id)
+                .queryParam("org_id", org_id)
+                .queryParam("timestamp", Long.toString(current))
+                .queryParam("signature", signature);
+
+        try {
+            
+        	ResponseEntity<String> response = restTemplate.exchange(builder.build().encode().toUri(), HttpMethod.GET, entity, String.class);
+            
+        	String responseBody = response.getBody();
+    		ObjectMapper mapper = new ObjectMapper();
+    		HashMap<String, String> value = null;
+    		try {
+    			value = mapper.readValue(responseBody, HashMap.class);
+    			
+            	token = new Token();
+            	token.setAccess_token(value.get("access_token"));
+        		long expires = Long.parseLong(value.get("expires_in")) * 1000L;
+            	token.setExipred_time(current + expires);
+        		
+            	moxtraAccessToken.put(org_id, token);
+            	
+            	return token;
+    			
+            } catch (Exception e) {
+            	logger.error("Error getting response!", e);
+            	return null;
+            }
+            
+        } catch (RestClientException e) {
+            logger.error("Error getting access_token!", e);
+            return null;
+        }        	
+    	
+    }   
     
 	// create HMac
 	private static String toHexString(byte[] bytes) {
@@ -335,6 +409,20 @@ public abstract class MoxtraBot {
 		return formatter.toString();
 	}    
     
+	private static byte[] encodeUrlSafe(byte[] data) {
+		byte[] encode = Base64.encode(data);
+	    for (int i = 0; i < encode.length; i++) {
+	        if (encode[i] == '+') {
+	            encode[i] = '-';
+	        } else if (encode[i] == '/') {
+	            encode[i] = '_';
+	        } else if (encode[i] == '=') {
+	        	encode[i] = ' ';
+	        }
+	    }
+	    return encode;
+	}		
+	
 	private static String calculateHMAC_SHA1(byte[] data, String key)
 			throws SignatureException, NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException
 	{
@@ -343,7 +431,16 @@ public abstract class MoxtraBot {
 		mac.init(signingKey);
 		return "sha1=" + toHexString(mac.doFinal(data));
 	}	    
-    
+
+	public static String generateSignature(byte[] data, String key)
+			throws SignatureException, NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException
+	{
+		SecretKeySpec signingKey = new SecretKeySpec(key.getBytes("UTF-8"), HMAC_SHA256_ALGORITHM);
+		Mac mac = Mac.getInstance(HMAC_SHA256_ALGORITHM);
+		mac.init(signingKey);
+		return new String(encodeUrlSafe((mac.doFinal(data)))).trim();
+	}	    
+	
     private List<Invocable> filterMessageMethods(ChatMessage chatMessage) {
     	
         List<MethodWrapper> methodWrappers = eventToMethodsMap.get(EventType.MESSAGE.name());
@@ -381,20 +478,23 @@ public abstract class MoxtraBot {
             }
         }
     	
-    	// without pattern
-    	for (MethodWrapper methodWrapper : methodWrappers) {
-
-            String pattern = methodWrapper.getPattern();
-            
-            if (StringUtils.isEmpty(pattern)) {
-            	// add default handler
-            	Invocable invokee = new Invocable(methodWrapper);
-            	invokee.setPrimatches(primatches);
-            	invokees.add(invokee);
-            	
-            	primatches++;
-            }
-        }
+    	// whether to invoke generic handler if no matches
+    	if (primatches == 0 || this.isGenericHandling()) {
+	    	// without pattern
+	    	for (MethodWrapper methodWrapper : methodWrappers) {
+	
+	            String pattern = methodWrapper.getPattern();
+	            
+	            if (StringUtils.isEmpty(pattern)) {
+	            	// add default handler
+	            	Invocable invokee = new Invocable(methodWrapper);
+	            	invokee.setPrimatches(primatches);
+	            	invokees.add(invokee);
+	            	
+	            	primatches++;
+	            }
+	        }
+    	}
     	
     	return invokees;
     }    

@@ -382,4 +382,12 @@ public class Chat {
 		}
 		return null;
 	}
+	
+	// the original comment
+	public EventComment getReply_to() {
+		if (chatMessage != null && eventType == EventType.MESSAGE) {
+			return chatMessage.getEvent().getReply_to();
+		}
+		return null;
+	}	
 }

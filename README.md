@@ -56,16 +56,29 @@ public class MyBot extends MoxtraBot {
     timestamp: 'TIMESTAMP',
     user: {
       id: 'USER_ID',
-      name: 'USERNAME'
+      name: 'USERNAME',
+      image_url: 'AVATAR',
+      unique_id: 'UNIQUE_ID',
+      email: 'EMAIL',
+      is_bot: 'IS_BOT'
     },
     comment: {
       id: 'COMMENT_ID',
       text: 'TEXT MESSAGE',
-      audio: 'AUDIO MESSAGE'    
+      richtext: 'RICHTEXT MESSAGE',
+      audio: 'AUDIO MESSAGE',
+      is_position_comment: 'IS_POSITION_COMMENT'
     },
     target: {
       id: 'BINDER_ID',
       object_type: 'binder'
+    },
+    reply_to: {
+      id: 'COMMENT_ID',
+      text: 'TEXT MESSAGE',
+      richtext: 'RICHTEXT MESSAGE',
+      audio: 'AUDIO MESSAGE',
+      is_position_comment: 'IS_POSITION_COMMENT'
     }
   }
 }

@@ -4,6 +4,7 @@ public class EventComment extends EventBase {
 	private String text;
 	private String richtext;
 	private String audio;
+	private Boolean is_position_comment;
 
 	public EventComment() {
 	}
@@ -34,5 +35,13 @@ public class EventComment extends EventBase {
 
 	public void setAudio(String audio) {
 		this.audio = audio;
+	}
+
+	public Boolean getIs_position_comment() {
+		return is_position_comment;
+	}
+
+	public void setIs_position_comment(Boolean is_position_comment) {
+		this.is_position_comment = is_position_comment;
 	}
 }

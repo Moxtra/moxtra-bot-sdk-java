@@ -18,6 +18,7 @@ public class Event implements Serializable {
 	private EventTodo todo;
 	private EventPostback postback;
 	private EventTarget target;
+	private EventComment reply_to;
 
 	/**
 	 * @return the target
@@ -90,5 +91,11 @@ public class Event implements Serializable {
 	}
 	public void setAnnotate(EventAnnotate annotate) {
 		this.annotate = annotate;
+	}
+	public EventComment getReply_to() {
+		return reply_to;
+	}
+	public void setReply_to(EventComment reply_to) {
+		this.reply_to = reply_to;
 	}
 }
